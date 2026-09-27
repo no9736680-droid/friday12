@@ -4,8 +4,9 @@ version = "0.1.0"
 description = "Friday — A Tony Stark-inspired MCP server"
 readme = "README.md"
 requires-python = ">=3.11"
+
 dependencies = [
-    "fastmcp",
+    "mcp>=1.28,<2",
     "httpx",
     "livekit-agents[deepgram,groq,openai,sarvam,silero]>=1.5.1",
     "livekit-plugins-google>=1.5.1",
@@ -14,7 +15,7 @@ dependencies = [
 
 [project.scripts]
 friday = "server:main"
-friday_voice = "agent_friday:dev" # Points to the wrapper
+friday_voice = "agent_friday:dev"
 
 [build-system]
 requires = ["hatchling"]
