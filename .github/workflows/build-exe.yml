@@ -1,4 +1,3 @@
-
 name: Build FRIDAY EXE
 
 on:
@@ -12,71 +11,39 @@ permissions:
 
 jobs:
   build:
-    name: Build FRIDAY on Windows
+    name: Build FRIDAY Windows EXE
     runs-on: windows-latest
 
     steps:
+
+      # 1. Checkout
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
+
+      # 2. Python
+      - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Extract uploaded ZIP
+
+      # 3. Verify project
+      - name: Verify FRIDAY project
         shell: powershell
         run: |
-          $workspace = $env:GITHUB_WORKSPACE
+          Write-Host "======================================"
+          Write-Host "FRIDAY PROJECT CHECK"
+          Write-Host "======================================"
 
-          $zip = Get-ChildItem `
-            -Path $workspace `
-            -Filter "FRIDAY-TONY-STARK-GITHUB-READY.zip" `
-            -Recurse `
-            -File |
-            Select-Object -First 1
+          Write-Host ""
+          Write-Host "Current directory:"
+          Get-Location
 
-          if ($null -eq $zip) {
-            Write-Error "FRIDAY ZIP not found in repository."
-            Get-ChildItem $workspace -Recurse -File |
-              Select-Object -First 100 FullName
-            exit 1
-          }
+          Write-Host ""
+          Write-Host "Repository files:"
+          Get-ChildItem -Force
 
-          $destination = Join-Path $workspace "friday-source"
-
-          New-Item -ItemType Directory `
-            -Force -Path $destination | Out-Null
-
-          Expand-Archive `
-            -LiteralPath $zip.FullName `
-            -DestinationPath $destination `
-            -Force
-
-          Write-Host "ZIP extracted by GitHub Actions."
-
-          $projectFiles = Get-ChildItem `
-            -Path $destination `
-            -Filter "pyproject.toml" `
-            -Recurse `
-            -File
-
-          if (!$projectFiles) {
-            Write-Error "pyproject.toml not found inside ZIP."
-            exit 1
-          }
-
-          $projectDir = $projectFiles[0].Directory.FullName
-
-          "PROJECT_DIR=$projectDir" >> $env:GITHUB_ENV
-
-          Write-Host "Project directory: $projectDir"
-
-          Get-ChildItem $projectDir -Force
-
-      - name: Verify project files
-        shell: powershell
-        run: |
           $required = @(
             "pyproject.toml",
             "agent_friday.py",
@@ -84,88 +51,139 @@ jobs:
           )
 
           foreach ($file in $required) {
-            $path = Join-Path $env:PROJECT_DIR $file
-
-            if (!(Test-Path $path)) {
-              Write-Error "Required file missing: $file"
+            if (!(Test-Path $file)) {
+              Write-Error "Missing required file: $file"
               exit 1
             }
+
+            Write-Host "FOUND: $file"
           }
 
+          Write-Host ""
           Write-Host "All required files found."
 
+
+      # 4. Upgrade pip
       - name: Upgrade pip
         run: |
           python -m pip install --upgrade pip setuptools wheel
 
-      - name: Install project dependencies
+
+      # 5. Install project
+      - name: Install FRIDAY dependencies
         shell: powershell
         run: |
-          Set-Location "$env:PROJECT_DIR"
+          Write-Host "Installing FRIDAY project..."
+
           python -m pip install -e .
 
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "FRIDAY dependency installation failed."
+            exit 1
+          }
+
+          Write-Host "FRIDAY dependencies installed."
+
+
+      # 6. Install PyInstaller
       - name: Install PyInstaller
         run: |
           python -m pip install --upgrade pyinstaller
 
-      - name: Build FRIDAY Voice
+
+      # 7. Verify PyInstaller
+      - name: Verify PyInstaller
+        run: |
+          python -m PyInstaller --version
+
+
+      # 8. Build Voice EXE
+      - name: Build FRIDAY Voice EXE
         shell: powershell
         run: |
-          Set-Location "$env:PROJECT_DIR"
+          Write-Host "======================================"
+          Write-Host "BUILDING FRIDAY VOICE"
+          Write-Host "======================================"
 
           python -m PyInstaller `
             --clean `
             --noconfirm `
             --onefile `
-            --name FRIDAY-Voice `
-            agent_friday.py
+            --name "FRIDAY-Voice" `
+            "agent_friday.py"
 
           if (!(Test-Path "dist\FRIDAY-Voice.exe")) {
-            Write-Error "Voice EXE was not created."
+            Write-Error "FRIDAY-Voice.exe was not created."
             exit 1
           }
 
-      - name: Build FRIDAY Server
+          Write-Host "FRIDAY-Voice.exe created."
+
+
+      # 9. Build Server EXE
+      - name: Build FRIDAY Server EXE
         shell: powershell
         run: |
-          Set-Location "$env:PROJECT_DIR"
+          Write-Host "======================================"
+          Write-Host "BUILDING FRIDAY SERVER"
+          Write-Host "======================================"
 
           python -m PyInstaller `
             --clean `
             --noconfirm `
             --onefile `
-            --name FRIDAY-Server `
-            server.py
+            --name "FRIDAY-Server" `
+            "server.py"
 
           if (!(Test-Path "dist\FRIDAY-Server.exe")) {
-            Write-Error "Server EXE was not created."
+            Write-Error "FRIDAY-Server.exe was not created."
             exit 1
           }
 
+          Write-Host "FRIDAY-Server.exe created."
+
+
+      # 10. Prepare release
       - name: Prepare release
         shell: powershell
         run: |
-          $release = Join-Path $env:GITHUB_WORKSPACE "release"
+          Write-Host "Preparing release..."
 
-          New-Item -ItemType Directory `
-            -Force -Path $release | Out-Null
-
-          Copy-Item `
-            "$env:PROJECT_DIR\dist\FRIDAY-Voice.exe" `
-            "$release\FRIDAY-Voice.exe"
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path "release" | Out-Null
 
           Copy-Item `
-            "$env:PROJECT_DIR\dist\FRIDAY-Server.exe" `
-            "$release\FRIDAY-Server.exe"
+            "dist\FRIDAY-Voice.exe" `
+            "release\FRIDAY-Voice.exe"
 
-          if (Test-Path "$env:PROJECT_DIR\README.md") {
-            Copy-Item "$env:PROJECT_DIR\README.md" $release
+          Copy-Item `
+            "dist\FRIDAY-Server.exe" `
+            "release\FRIDAY-Server.exe"
+
+          if (Test-Path "README.md") {
+            Copy-Item `
+              "README.md" `
+              "release\README.md"
           }
 
-          Write-Host "Release files:"
-          Get-ChildItem $release
+          if (Test-Path ".env.example") {
+            Copy-Item `
+              ".env.example" `
+              "release\.env.example"
+          }
 
-      - name: Upload EXE artifacts
+          Write-Host ""
+          Write-Host "======================================"
+          Write-Host "RELEASE CONTENT"
+          Write-Host "======================================"
+
+          Get-ChildItem "release"
+
+
+      # 11. Upload EXEs
+      - name: Upload FRIDAY EXE
         uses: actions/upload-artifact@v4
         with:
           name: FRIDAY-Windows-EXE
